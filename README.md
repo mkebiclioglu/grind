@@ -11,7 +11,7 @@ you stop using it.
 grind "make the test suite pass"          # autonomous goal, then an interactive prompt
 grind                                     # interactive chat with tools
 grind -m claude -p "summarize README.md"  # one-shot
-grind pod up                              # start Qwen3.8-27B on RunPod (~10 min to ready)
+grind pod up                              # start Qwen3.8-27B on RunPod (~15 min to ready)
 ```
 
 ## Why not omnigent?
@@ -111,6 +111,10 @@ grind pod status    # balance, cost so far, idle timer
 grind pod logs      # vLLM log tail
 grind pod down      # delete it now
 ```
+
+Startup is ~15 min: ~7 min image pull, ~5 min weight download, ~3 min load/compile. On an L40 it gives 64K
+context (KV room for ~120K tokens). A small coding goal (write a CLI + 12 pytest tests, fix a failure, verify)
+took ~1 minute end to end.
 
 What `up` does:
 
