@@ -72,8 +72,9 @@ def _start_script(p, key_env="GRIND_VLLM_KEY"):
     return (
         'echo "$GRIND_WATCHDOG_B64" | base64 -d > /tmp/grind_watchdog.py\n'
         "python3 /tmp/grind_watchdog.py &\n"
-        f"{serve} >> /tmp/vllm.log 2>&1\n"
-        'echo "[grind] vllm exited with code $?" >> /tmp/vllm.log\n'
+        + "".join(f"{line}\n" for line in p.get("pre_serve", []))
+        + f"{serve} >> /tmp/vllm.log 2>&1\n"
+        + 'echo "[grind] vllm exited with code $?" >> /tmp/vllm.log\n'
         "sleep infinity\n"
     )
 
