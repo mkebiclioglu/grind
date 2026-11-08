@@ -58,7 +58,7 @@ DEFAULTS = {
         "idle_minutes": 30,
         "max_hours": 3,
         "mtp": True,
-        "extra_args": ["--language-model-only", "--gpu-memory-utilization", "0.92"],
+        "extra_args": ["--language-model-only", "--gpu-memory-utilization", "0.92", "--max-num-seqs", "16"],
         # Shell lines run before `vllm serve`. The cu129 image ships a torchcodec built for CUDA 13
         # that crashes vLLM at import; it's only needed for video input, so drop it.
         "pre_serve": ["pip uninstall -y -q torchcodec >/dev/null 2>&1 || true"],
