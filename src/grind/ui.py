@@ -32,9 +32,13 @@ class UI:
                 out.write(DIM + ITAL)
             out.write(ev.text)
         elif ev.kind == "text":
+            text = ev.text
             if self._mode != "text":
+                text = text.lstrip()
+                if not text:
+                    return
                 self._switch("text")
-            out.write(ev.text)
+            out.write(text)
         elif ev.kind == "retry":
             self._switch(None)
             self.console.print(f"[yellow]⟳ {escape(ev.text)}[/]")

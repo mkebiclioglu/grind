@@ -82,7 +82,7 @@ class OpenAIProvider:
             m2 = {k: v for k, v in m.items() if not k.startswith("_") and k != "reasoning"}
             if m["role"] == "assistant":
                 if keep_reasoning and m.get("reasoning"):
-                    m2["reasoning_content"] = m["reasoning"]
+                    m2["reasoning"] = m["reasoning"]  # vLLM's field name; renders into <think> for Qwen
                 if not m2.get("content") and not m2.get("tool_calls"):
                     m2["content"] = "(no output)"
             out.append(m2)
