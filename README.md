@@ -102,14 +102,40 @@ kwargs, `openai` → `reasoning_effort`; Anthropic always uses `output_config.ef
 
 Switch mid-session with `/model <name>`; the history carries over.
 
-## RunPod: Qwen3.8-27B
+## RunPod: open models on a rented GPU
 
 ```bash
-grind pod up        # create the pod, wait for vLLM, point the `qwen` profile at it
-grind               # use it
-grind pod status    # balance, cost so far, idle timer
-grind pod logs      # vLLM log tail
-grind pod down      # delete it now
+grind pod presets               # models `up` can serve
+grind pod up                    # default preset (Qwen3.8-27B), waits until vLLM is ready
+grind pod up -m heretic-9b      # another preset
+grind                           # use it (`up` makes the pod's profile the default model)
+grind pod status                # balance, cost so far, idle timer
+grind pod logs                  # vLLM log tail
+grind pod down                  # delete it now
+```
+
+| preset | model | profile | notes |
+|---|---|---|---|
+| `qwen3.8-27b` | [Qwen/Qwen3.8-27B-FP8](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) | `qwen` | strongest coder; 31 GB |
+| `heretic-9b` | [xtools-at/DeepSeek-V4-Pro-Qwen3.5-9B-UNCENSORED-heretic](https://huggingface.co/xtools-at/DeepSeek-V4-Pro-Qwen3.5-9B-UNCENSORED-heretic) | `heretic` | DeepSeek-V4-Pro reasoning distilled into Qwen3.5-9B, refusals removed; 19 GB bf16, faster, weaker at code |
+
+One pod runs at a time. Add a preset for any vLLM-servable Hugging Face model in `config.toml`; anything not
+set falls back to the shared `[pod]` settings (image, parsers, context, limits):
+
+```toml
+[pod.presets.my-model]
+hf_model = "org/model"
+served_name = "my-model"
+gpus = ["NVIDIA A40", "NVIDIA L40S"]
+profile = "my-model"          # the grind profile `up` points at the pod
+tool_parser = "hermes"        # vLLM --tool-call-parser for the model's tool format
+reasoning_parser = ""         # "" for non-reasoning models
+mtp = false
+
+[models.my-model]
+provider = "openai"
+model = "my-model"
+context_window = 32768
 ```
 
 Startup is ~15 min: ~7 min image pull, ~5 min weight download, ~3 min load/compile. On an L40 it gives 64K

@@ -62,10 +62,12 @@ def _start_script(p, key_env="GRIND_VLLM_KEY"):
         "--host", "0.0.0.0", "--port", "8000",
         "--served-model-name", p["served_name"],
         "--max-model-len", str(p["max_model_len"]),
-        "--enable-auto-tool-choice", "--tool-call-parser", "qwen3_coder",
-        "--reasoning-parser", "qwen3",
         *p.get("extra_args", []),
     ]
+    if p.get("tool_parser"):
+        args += ["--enable-auto-tool-choice", "--tool-call-parser", p["tool_parser"]]
+    if p.get("reasoning_parser"):
+        args += ["--reasoning-parser", p["reasoning_parser"]]
     if p.get("mtp"):
         args += ["--speculative-config", json.dumps({"method": "mtp", "num_speculative_tokens": 3})]
     serve = " ".join(shlex.quote(a) for a in args) + f' --api-key "${key_env}"'
@@ -79,9 +81,26 @@ def _start_script(p, key_env="GRIND_VLLM_KEY"):
     )
 
 
-def up(idle=None, max_hours=None, gpu=None, mtp=None, wait=True):
+def presets():
     cfg = config.load()
-    p = dict(cfg["pod"])
+    default = cfg["pod"].get("default_preset")
+    for name, pr in cfg["pod"].get("presets", {}).items():
+        mark = "*" if name == default else " "
+        console.print(f"{mark} {name:<14} {pr.get('hf_model')}  → profile [bold]{pr.get('profile')}[/]", highlight=False)
+
+
+def _clear_profile(st):
+    """Point the old pod's profile nowhere, so it fails fast instead of retrying a dead URL."""
+    if st and st.get("profile"):
+        config.update_profile(st["profile"], base_url="", api_key="")
+
+
+def up(preset=None, idle=None, max_hours=None, gpu=None, mtp=None, wait=True):
+    cfg = config.load()
+    try:
+        preset, p = config.pod_settings(cfg, preset)
+    except KeyError as e:
+        sys.exit(str(e))
     if idle is not None:
         p["idle_minutes"] = idle
     if max_hours is not None:
@@ -95,8 +114,10 @@ def up(idle=None, max_hours=None, gpu=None, mtp=None, wait=True):
         with _client() as c:
             r = c.get(f"{REST}/pods/{st['id']}")
         if r.status_code == 200 and r.json().get("desiredStatus") == "RUNNING":
-            console.print(f"Pod {st['id']} is already running. Use `grind pod status` or `grind pod down`.")
+            console.print(f"Pod {st['id']} ({st.get('preset', '?')}) is already running. "
+                          "`grind pod down` first; one pod at a time keeps the bill small.")
             return
+        _clear_profile(st)
         _save_state(None)
 
     bal, _ = balance()
@@ -104,7 +125,7 @@ def up(idle=None, max_hours=None, gpu=None, mtp=None, wait=True):
     vkey = secrets.token_urlsafe(32)
     watchdog = resources.files("grind").joinpath("watchdog.py").read_bytes()
     body = {
-        "name": "grind-vllm",
+        "name": f"grind-{preset}",
         "imageName": p["image"],
         "gpuTypeIds": gpus,
         "gpuTypePriority": "custom",
@@ -124,13 +145,19 @@ def up(idle=None, max_hours=None, gpu=None, mtp=None, wait=True):
     }
     pod = None
     with _client() as c:
-        for cloud in p["cloud"]:
-            body["cloudType"] = cloud
-            r = c.post(f"{REST}/pods", json=body)
-            if r.status_code < 300:
-                pod = r.json()
+        for attempt in range(4):  # RunPod stock flickers; a retry seconds later often succeeds
+            for cloud in p["cloud"]:
+                body["cloudType"] = cloud
+                r = c.post(f"{REST}/pods", json=body)
+                if r.status_code < 300:
+                    pod = r.json()
+                    break
+                if "no instances" not in r.text.lower():
+                    console.print(f"[dim]{cloud} cloud: {r.status_code} {r.text[:200]}[/]")
+            if pod:
                 break
-            console.print(f"[dim]{cloud} cloud: {r.status_code} {r.text[:200]}[/]")
+            console.print(f"[dim]No GPU free from {', '.join(gpus)}; retrying ({attempt + 1}/4)...[/]")
+            time.sleep(15)
     if not pod:
         sys.exit("No matching GPU available right now. Try again later or pass --gpu.")
 
@@ -138,6 +165,8 @@ def up(idle=None, max_hours=None, gpu=None, mtp=None, wait=True):
     cost = pod.get("costPerHr") or pod.get("adjustedCostPerHr")
     st = {
         "id": pod["id"],
+        "preset": preset,
+        "profile": p["profile"],
         "key": vkey,
         "created": time.time(),
         "gpu": gpu_name,
@@ -148,9 +177,13 @@ def up(idle=None, max_hours=None, gpu=None, mtp=None, wait=True):
     _save_state(st)
     config.update_profile(p["profile"], base_url=st["url"], api_key=vkey, model=p["served_name"],
                           context_window=p["max_model_len"])
+    user = config.load_user()
+    user["default_model"] = p["profile"]
+    config.save_user(user)
+    console.print(f"[bold]{preset}[/] ({p['hf_model']})")
     console.print(f"Pod [bold]{pod['id']}[/] on {gpu_name} at ${cost}/hr "
                   f"(auto-deletes after {p['idle_minutes']} min idle or {p['max_hours']}h).")
-    console.print(f"Profile [bold]{p['profile']}[/] now points at {st['url']}")
+    console.print(f"Profile [bold]{p['profile']}[/] (now the default model) points at {st['url']}")
     if wait:
         wait_ready(st)
 
@@ -179,7 +212,7 @@ def wait_ready(st=None, timeout_min=45):
             if s is None:
                 line = "container starting (pulling image)..."
             elif s["phase"] == "ready":
-                console.print(f"[green]Ready[/] after {el//60}m{el%60:02d}s. Run `grind` (profile qwen).")
+                console.print(f"[green]Ready[/] after {el//60}m{el%60:02d}s. Run `grind` (profile {st.get('profile', 'qwen')}).")
                 return True
             elif s["phase"] == "crashed":
                 console.print("[red]vLLM crashed.[/] Last log lines:")
@@ -211,11 +244,12 @@ def status():
         r = c.get(f"{REST}/pods/{st['id']}")
     if r.status_code != 200:
         console.print(f"Pod {st['id']} is gone (watchdog or manual delete).")
+        _clear_profile(st)
         _save_state(None)
         return
     pod = r.json()
     up_min = (time.time() - st["created"]) / 60
-    console.print(f"Pod {st['id']} {pod.get('desiredStatus')} on {st['gpu']} at ${pod.get('costPerHr')}/hr, "
+    console.print(f"Pod {st['id']} [bold]{st.get('preset', '')}[/] {pod.get('desiredStatus')} on {st['gpu']} at ${pod.get('costPerHr')}/hr, "
                   f"up {up_min:.0f} min (~${up_min/60*float(pod.get('costPerHr') or 0):.2f})")
     s = _watchdog_status(st)
     if s:
@@ -245,6 +279,7 @@ def down():
         r = c.delete(f"{REST}/pods/{st['id']}")
     if r.status_code in (200, 204, 404):
         console.print(f"Pod {st['id']} deleted.")
+        _clear_profile(st)
         _save_state(None)
     else:
         console.print(f"[red]Delete failed[/] {r.status_code} {r.text[:300]}")

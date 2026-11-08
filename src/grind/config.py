@@ -37,6 +37,17 @@ DEFAULTS = {
             "effort": "medium",
             "preserve_reasoning": True,
         },
+        "heretic": {
+            "provider": "openai",
+            "base_url": "",  # filled in by `grind pod up -m heretic-9b`
+            "model": "heretic-9b",
+            "context_window": 65536,
+            "max_tokens": 16384,
+            "temperature": 0.6,
+            "top_p": 0.95,
+            "extra_body": {"top_k": 20},
+            "preserve_reasoning": True,
+        },
         "claude": {
             "provider": "anthropic",
             "model": "claude-opus-5-5",
@@ -46,11 +57,10 @@ DEFAULTS = {
             "max_tokens": 64000,
         },
     },
+    # Settings shared by every pod; each preset below can override any of them.
     "pod": {
-        "hf_model": "Qwen/Qwen3.8-27B-FP8",
-        "served_name": "qwen3.8-27b",
+        "default_preset": "qwen3.8-27b",
         "image": "vllm/vllm-openai:v0.32.0-cu129",
-        "gpus": ["NVIDIA A40", "NVIDIA RTX A6000", "NVIDIA L40S", "NVIDIA RTX 6000 Ada Generation", "NVIDIA L40"],
         "cuda_versions": ["12.9", "13.0"],
         "cloud": ["COMMUNITY", "SECURE"],
         "disk_gb": 70,
@@ -58,13 +68,41 @@ DEFAULTS = {
         "idle_minutes": 30,
         "max_hours": 3,
         "mtp": True,
+        "tool_parser": "qwen3_coder",
+        "reasoning_parser": "qwen3",
         "extra_args": ["--language-model-only", "--gpu-memory-utilization", "0.92", "--max-num-seqs", "16"],
         # Shell lines run before `vllm serve`. The cu129 image ships a torchcodec built for CUDA 13
         # that crashes vLLM at import; it's only needed for video input, so drop it.
         "pre_serve": ["pip uninstall -y -q torchcodec >/dev/null 2>&1 || true"],
-        "profile": "qwen",
+        "presets": {
+            "qwen3.8-27b": {
+                "hf_model": "Qwen/Qwen3.8-27B-FP8",
+                "served_name": "qwen3.8-27b",
+                "gpus": ["NVIDIA A40", "NVIDIA RTX A6000", "NVIDIA L40S", "NVIDIA RTX 6000 Ada Generation", "NVIDIA L40"],
+                "profile": "qwen",
+            },
+            "heretic-9b": {
+                "hf_model": "xtools-at/DeepSeek-V4-Pro-Qwen3.5-9B-UNCENSORED-heretic",
+                "served_name": "heretic-9b",
+                "gpus": ["NVIDIA A40", "NVIDIA RTX PRO 4500 Blackwell", "NVIDIA GeForce RTX 5090",
+                         "NVIDIA RTX A6000", "NVIDIA RTX 6000 Ada Generation", "NVIDIA L40S", "NVIDIA L40"],
+                "disk_gb": 50,
+                "profile": "heretic",
+            },
+        },
     },
 }
+
+
+def pod_settings(cfg, preset=None):
+    """Shared pod settings merged with one preset. Returns (name, settings)."""
+    pod = cfg["pod"]
+    name = preset or pod.get("default_preset")
+    presets = pod.get("presets", {})
+    if name not in presets:
+        raise KeyError(f"no pod preset {name!r}; have: {', '.join(presets)}")
+    shared = {k: v for k, v in pod.items() if k not in ("presets", "default_preset")}
+    return name, {**shared, **presets[name]}
 
 
 def _merge(base, over):
