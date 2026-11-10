@@ -133,10 +133,19 @@ def load_user():
     return tomllib.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
 
 
+def write_private(path, text):
+    """Write a file only the user can read (keys, transcripts); never world-readable, even briefly."""
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    tmp = path.with_name(path.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    tmp.chmod(0o600)
+    tmp.replace(path)
+
+
 def save_user(user):
-    HOME.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text(tomli_w.dumps(user))
-    CONFIG_PATH.chmod(0o600)
+    write_private(CONFIG_PATH, tomli_w.dumps(user))
 
 
 def update_profile(name, **fields):

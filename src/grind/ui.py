@@ -173,8 +173,10 @@ class UI:
             def _(event):
                 event.current_buffer.insert_text("\n")
 
-            config.DATA.mkdir(parents=True, exist_ok=True)
-            self._session = PromptSession(history=FileHistory(str(config.DATA / "history")), key_bindings=kb)
+            config.DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
+            history = config.DATA / "history"
+            history.touch(mode=0o600)
+            self._session = PromptSession(history=FileHistory(str(history)), key_bindings=kb)
         try:
             return self._session.prompt(label)
         except EOFError:

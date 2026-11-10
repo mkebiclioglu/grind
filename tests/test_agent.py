@@ -139,3 +139,21 @@ def test_anthropic_message_conversion():
     assert [m["role"] for m in out] == ["user", "assistant", "user"]
     assert [b["type"] for b in out[2]["content"]] == ["tool_result", "tool_result", "text"]
     assert out[2]["content"][1]["is_error"] is True
+
+
+def test_grep_pattern_is_never_an_rg_option(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # rg would search the process cwd if the pattern were taken as an option
+    (tmp_path / "run.sh").write_text("touch pwned\n")
+    t = Tools(tmp_path)
+    out = t.grep("--pre=bash", path=".")
+    assert not (tmp_path / "pwned").exists()
+    assert out == "no matches"
+    assert "run.sh" in t.grep("-pwned|touch", path=".")
+
+
+def test_sessions_are_user_only(make_agent, tmp_path):
+    a = make_agent([("hi", None)])
+    a.chat("hello")
+    f = tmp_path / "sessions" / f"{a.id}.json"
+    assert f.stat().st_mode & 0o777 == 0o600
+    assert f.parent.stat().st_mode & 0o777 == 0o700

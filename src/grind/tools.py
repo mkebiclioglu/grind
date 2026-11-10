@@ -178,7 +178,8 @@ class Tools:
     def grep(self, pattern, path=None, include=None):
         root = self.path(path or ".")
         if shutil.which("rg"):
-            cmd = ["rg", "-n", "--no-heading", "--max-columns", "300", "-m", "50", pattern, str(root)]
+            # -e/--: a pattern starting with "-" must not be read as an rg option (--pre runs commands)
+            cmd = ["rg", "-n", "--no-heading", "--max-columns", "300", "-m", "50", "-e", pattern, "--", str(root)]
             if include:
                 cmd[1:1] = ["-g", include]
             out = subprocess.run(cmd, capture_output=True, text=True, timeout=60).stdout

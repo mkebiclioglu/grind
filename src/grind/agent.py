@@ -92,13 +92,10 @@ class Agent:
         self.usage = data.get("usage", self.usage)
 
     def save(self):
-        config.SESSIONS.mkdir(parents=True, exist_ok=True)
         data = {"id": self.id, "cwd": str(self.tools.cwd), "profile": self.profile_name, "goal": self.goal,
                 "plan": self.tools.plan, "usage": self.usage, "updated": time.time(), "messages": self.messages}
-        path = config.SESSIONS / f"{self.id}.json"
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data))
-        tmp.replace(path)
+        # transcripts hold command output and file contents: keep them user-only
+        config.write_private(config.SESSIONS / f"{self.id}.json", json.dumps(data))
 
     def add(self, msg):
         self.messages.append(msg)

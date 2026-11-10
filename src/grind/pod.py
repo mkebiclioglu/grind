@@ -45,8 +45,7 @@ def _save_state(s):
     if s is None:
         config.POD_STATE.unlink(missing_ok=True)
         return
-    config.POD_STATE.write_text(json.dumps(s, indent=2))
-    config.POD_STATE.chmod(0o600)
+    config.write_private(config.POD_STATE, json.dumps(s, indent=2))
 
 
 def balance():

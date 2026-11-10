@@ -10,6 +10,7 @@ It deletes the pod with the pod-scoped RUNPOD_API_KEY that RunPod injects into
 every pod; the user's own API key never leaves the laptop.
 """
 
+import hmac
 import http.server
 import json
 import os
@@ -173,7 +174,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        if self.headers.get("Authorization") != f"Bearer {KEY}":
+        if not KEY or not hmac.compare_digest((self.headers.get("Authorization") or "").encode(), f"Bearer {KEY}".encode()):
             self.send_response(401)
             self.end_headers()
             return
